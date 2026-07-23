@@ -1,5 +1,6 @@
 import os
 import logging
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
@@ -15,7 +16,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Simple in-memory storage (Resets on Railway restart)
-# For permanent storage, replace this with a database like SQLite or PostgreSQL.
 user_notes = {}
 
 # --- Helper Functions ---
@@ -114,7 +114,6 @@ async def list_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keys = list(notes.keys())
-    # Send keys in chunks if too many
     if len(keys) <= 50:
         await update.message.reply_text("📋 Your keys:\n" + "\n".join(keys))
     else:
@@ -140,7 +139,6 @@ async def search_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             results.append(f"{key}: {value}")
 
     if results:
-        # Limit results to avoid message too long
         result_text = "\n".join(results[:20])
         if len(results) > 20:
             result_text += f"\n... and {len(results) - 20} more."
@@ -148,22 +146,19 @@ async def search_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"🔎 No results found for '{term}'.")
 
-# --- Callback Query Handler (for buttons) ---
+# --- Callback Query Handler ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle inline button presses."""
     query = update.callback_query
     await query.answer()
 
     action = query.data
-    user = query.from_user
 
-    # Send a message prompting the user for the appropriate action
     if action == 'save':
         await query.message.reply_text("Please use the command: /save <key> <value>")
     elif action == 'get':
         await query.message.reply_text("Please use the command: /get <key>")
     elif action == 'list':
-        # Directly call the list function
         await list_notes(update, context)
     elif action == 'delete':
         await query.message.reply_text("Please use the command: /delete <key>")
@@ -175,9 +170,15 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log errors."""
     logger.warning(f"Update {update} caused error {context.error}")
 
-# --- Main Function ---
+# --- Main Function with Python 3.13 Fix ---
 def main():
-    """Start the bot."""
+    """Start the bot with Python 3.13 compatibility."""
+    # Workaround for Python 3.13 attribute error
+    import telegram.ext._updater
+    if not hasattr(telegram.ext._updater.Updater, '_Updater__polling_cleanup_cb'):
+        # Create a dummy attribute to avoid the error
+        telegram.ext._updater.Updater._Updater__polling_cleanup_cb = None
+    
     # Create the Application
     application = Application.builder().token(TOKEN).build()
 
@@ -189,7 +190,7 @@ def main():
     application.add_handler(CommandHandler("list", list_notes))
     application.add_handler(CommandHandler("search", search_notes))
 
-    # Add callback query handler for buttons
+    # Add callback query handler
     application.add_handler(CallbackQueryHandler(button_handler))
 
     # Add error handler
